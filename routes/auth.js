@@ -5,7 +5,9 @@ const router = Router();
 
 
 //Funciones del Login
-const { logear, newPass, revalidarToken, crearUsuario } = require('../controllers/auth');
+const { logear, newPass, revalidarToken, crearUsuario,
+     obtenerUsuarios, modificarUsuario, eliminarUsuario,
+     obtenerEliminados, agregarUsuario } = require('../controllers/auth');
 const { validarJWT } = require('../middlewares/validar-jwt')
 
 
@@ -28,11 +30,11 @@ router.post(
             newPass);
 
 router.get('/renew', validarJWT,revalidarToken)
+router.post('/obtenerUsuarios', validarJWT,obtenerUsuarios)
 
 router.post(
     "/crearUsuario",
     [//middlewares
-        check('email','email obligatorio').not().isEmpty().isEmail(),
         check('usuario','usuario obligatorio').not().isEmpty(),
         check('email','email obligatorio').not().isEmpty(),
         check('pass','pass obligatorio').not().isEmpty(),
@@ -40,5 +42,17 @@ router.post(
     ],
         crearUsuario);
 
+router.post(
+        "/modificarUsuario",
+        [//middlewares
+            check('usuario','usuario obligatorio').not().isEmpty(),
+            check('email','email obligatorio').not().isEmpty(),
+            validarCampos,
+        ],
+        modificarUsuario);
 
+        router.post('/eliminarUsuario', validarJWT, eliminarUsuario)
+        router.post('/obtenerEliminados', validarJWT, obtenerEliminados)
+        router.post('/agregarUsuario', validarJWT, agregarUsuario)
+        
 module.exports = router;

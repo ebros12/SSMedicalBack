@@ -130,7 +130,7 @@ const revalidarToken = async(req, res = response ) =>{
               ok:true,
               uid,
               name,
-              rol:results[0].u_rol,
+              rol:results[0].rol,
               token
             })
              
@@ -147,7 +147,7 @@ const crearUsuario = async (req, res = express.response) => {
     try {
       // Verificar si el correo electrónico ya existe en la base de datos
       const emailExists = await verificarEmailExistente(email);
-
+      console.log(emailExists,"emailExists")
       if (emailExists) {
         return res.status(400).json({
           ok: false,
@@ -158,7 +158,7 @@ const crearUsuario = async (req, res = express.response) => {
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(pass, salt);
 
-      const queryStr = `INSERT INTO usuario (id, usuario, email, rol, pass, salt) VALUES (NULL, ?, ?, ?, ?, ?)`;
+      const queryStr = `INSERT INTO usuario (id, usuario, email, rol, pass, salt, estado) VALUES (NULL, ?, ?, ?, ?, ?, 1)`;
       const values = [usuario, email, rol, hash, salt];
 
       const [result] = await db2.query(queryStr, values);
@@ -199,18 +199,272 @@ const crearUsuario = async (req, res = express.response) => {
 };
 
 
+const modificarUsuario = async (req, res = express.response) => {
+  const { usuario, email, pass, rol } = req.body;
+
+  if ((usuario !== undefined || rol !== undefined || pass !== undefined) && email) {
+    try {
+      // Verificar si el usuario ya existe en la base de datos
+      const userExists = await verificarEmailExistente(email);
+
+      if (userExists) {
+        // Construye la consulta y los valores según los campos proporcionados
+        let queryStr = 'UPDATE usuario SET';
+        const values = [];
+
+        if (usuario !== undefined) {
+          queryStr += ' usuario = ?,';
+          values.push(usuario);
+        }
+
+        if (rol !== undefined) {
+          queryStr += ' rol = ?,';
+          values.push(rol);
+        }
+
+        if (pass !== undefined) {
+          if (pass !== '') {
+            const salt = await bcrypt.genSalt(10);
+            const hash = await bcrypt.hash(pass, salt);
+            queryStr += ' pass = ?, salt = ?,';
+            values.push(hash, salt);
+          }
+        }
+
+        // Elimina la coma extra al final de la consulta
+        queryStr = queryStr.replace(/,\s*$/, '');
+
+        // Agrega la condición de búsqueda por el correo electrónico
+        queryStr += ' WHERE email = ?';
+        values.push(email);
+
+        // Ejecuta la consulta
+        const [result] = await db2.query(queryStr, values);
+
+        if (result.affectedRows === 1) {
+          const token = await generarJWT(userExists.uid, usuario || userExists.usuario);
+
+          res.status(200).json({
+            ok: true,
+            uid: userExists.uid,
+            name: usuario || userExists.usuario,
+            rol: rol !== undefined ? rol : userExists.rol,
+            token
+          });
+        } else {
+          console.error("Error al modificar el usuario:", result.message);
+          res.status(500).json({
+            ok: false,
+            msg: 'Usuario no pudo ser modificado',
+          });
+        }
+      } else {
+        // El usuario no existe, devuelve un error
+        res.status(400).json({
+          ok: false,
+          msg: 'El usuario no existe',
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({
+        ok: false,
+        msg: 'Por favor hable con el administrador',
+        error: error.message
+      });
+    }
+  } else {
+    res.status(500).json({
+      ok: false,
+      msg: 'Faltan campos',
+    });
+  }
+};
+
+
+const eliminarUsuario = async (req, res = express.response) => {
+  const { email } = req.body;
+
+  try {
+    // Verificar si el usuario ya existe en la base de datos
+    const userExists = await verificarEmailExistente(email);
+
+    if (userExists) {
+      // Construye la consulta y los valores según los campos proporcionados
+      const queryStr = 'UPDATE usuario SET estado = "0" WHERE email = ?';
+      const values = [email];
+
+      // Ejecuta la consulta
+      const [result] = await db2.query(queryStr, values);
+
+      if (result.affectedRows === 1) {
+        const token = await generarJWT(userExists.uid, userExists.usuario);
+
+        res.status(200).json({
+          ok: true,
+          uid: userExists.uid,
+          name: userExists.usuario,
+          rol: userExists.rol,
+          token
+        });
+      } else {
+        console.error("Error al modificar el usuario:", result.message);
+        res.status(500).json({
+          ok: false,
+          msg: 'Usuario no pudo ser modificado',
+        });
+      }
+    } else {
+      // El usuario no existe, devuelve un error
+      res.status(400).json({
+        ok: false,
+        msg: 'El usuario no existe',
+      });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      ok: false,
+      msg: 'Por favor hable con el administrador',
+      error: error.message
+    });
+  }
+};
+
+
+
+
+const obtenerEliminados = async (req, res = express.response) => {
+  try {
+    const queryStr = `SELECT * FROM usuario WHERE estado='0'`;
+    const rows = db.query(queryStr, (err, results, fields) => {
+      if (err) throw err;
+
+      if (results != '') {
+
+        res.json({
+          ok: true,
+          data: results,
+        });
+      }else{
+        res.json({
+          ok: true,
+          data: [],
+        });
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: 'Por favor hable con el administrador',
+      error,
+    });
+  }
+};
+
+const agregarUsuario = async (req, res = express.response) => {
+  const { email } = req.body;
+
+  try {
+    // Verificar si el usuario ya existe en la base de datos
+    const userExists = await verificarEmailExistente(email);
+
+    if (userExists) {
+      // Construye la consulta y los valores según los campos proporcionados
+      const queryStr = 'UPDATE usuario SET estado = "1" WHERE email = ?';
+      const values = [email];
+
+      // Ejecuta la consulta
+      const [result] = await db2.query(queryStr, values);
+
+      if (result.affectedRows === 1) {
+        const token = await generarJWT(userExists.uid, userExists.usuario);
+
+        res.status(200).json({
+          ok: true,
+          uid: userExists.uid,
+          name: userExists.usuario,
+          rol: userExists.rol,
+          token
+        });
+      } else {
+        console.error("Error al modificar el usuario:", result.message);
+        res.status(500).json({
+          ok: false,
+          msg: 'Usuario no pudo ser modificado',
+        });
+      }
+    } else {
+      // El usuario no existe, devuelve un error
+      res.status(400).json({
+        ok: false,
+        msg: 'El usuario no existe',
+      });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      ok: false,
+      msg: 'Por favor hable con el administrador',
+      error: error.message
+    });
+  }
+};
+
+
+
+
+
+
+
+
 
 // Función para verificar si un correo electrónico ya existe en la base de datos
 const verificarEmailExistente = async (email) => {
-  const queryStr = 'SELECT * FROM usuario WHERE email = ?';
-  const [result] = await db2.query(queryStr, [email]);
+  try {
+    const queryStr = 'SELECT * FROM usuario WHERE email = ?';
+    const [result] = await db2.query(queryStr, [email]);
 
-  return result.length > 0;
+
+    return result.length > 0 ? result[0] : null;
+  } catch (error) {
+    console.error('Error en verificarEmailExistente:', error);
+    throw error;
+  }
 };
+const obtenerUsuarios = async (req, res = express.response) => {
+  const { tipo } = req.body;
+  try {
+    const queryStr = `SELECT * FROM usuario WHERE estado='1'`;
+    const rows = db.query(queryStr, (err, results, fields) => {
+      if (err) throw err;
+
+      if (results != '') {
+
+        res.json({
+          ok: true,
+          data: results,
+        });
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: 'Por favor hable con el administrador',
+      error,
+    });
+  }
+};
+
 
   module.exports = {
     logear,
     newPass,
     revalidarToken,
-    crearUsuario
+    crearUsuario,
+    obtenerUsuarios,
+    modificarUsuario,
+    eliminarUsuario,
+    obtenerEliminados,
+    agregarUsuario
   }
